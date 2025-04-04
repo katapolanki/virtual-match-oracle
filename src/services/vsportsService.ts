@@ -1,64 +1,18 @@
 
-import {
-  HistoricalMatch,
-  CurrentMatch,
-  TeamStats,
-  HeadToHead,
-  PatternFrequency,
-  MatchPrediction,
-  HISTORICAL_DATA_URL,
-  CURRENT_ROUND_URL
-} from './vsports/types';
-import { parseCSV, parseCurrentRoundCSV } from './vsports/parsers';
-import { calculateTeamStats, calculateHeadToHeadStats, calculatePatternFrequencies } from './vsports/statistics';
-import { generatePredictions } from './vsports/predictions';
+// Re-export types with 'export type' syntax
+export type { HistoricalMatch } from './vsports/types';
+export type { CurrentMatch } from './vsports/types';
+export type { TeamStats } from './vsports/types';
+export type { HeadToHead } from './vsports/types';
+export type { MatchPrediction } from './vsports/types';
+export type { PatternFrequency } from './vsports/types';
 
-export {
-  HistoricalMatch,
-  CurrentMatch,
-  TeamStats,
-  HeadToHead,
-  PatternFrequency,
-  MatchPrediction
-};
+// Re-export constants
+export { HISTORICAL_DATA_URL, CURRENT_ROUND_URL } from './vsports/types';
 
-// Adatok letöltése
-export const fetchData = async (): Promise<{
-  historicalData: HistoricalMatch[];
-  currentRoundData: CurrentMatch[];
-  teamStats: TeamStats[];
-  headToHeadStats: HeadToHead[];
-  patternFrequencies: PatternFrequency[];
-  predictions: MatchPrediction[];
-}> => {
-  // Történelmi adatok letöltése
-  const historicalResponse = await fetch(HISTORICAL_DATA_URL);
-  const historicalText = await historicalResponse.text();
-  const historicalData = parseCSV(historicalText);
+// Re-export parsers
+export { parseCSV, parseCurrentRoundCSV } from './vsports/parsers';
 
-  // Aktuális forduló adatainak letöltése
-  const currentResponse = await fetch(CURRENT_ROUND_URL);
-  const currentText = await currentResponse.text();
-  const currentRoundData = parseCurrentRoundCSV(currentText);
-
-  // Csapat statisztikák kiszámítása
-  const teamStats = calculateTeamStats(historicalData);
-
-  // Egymás elleni statisztikák kiszámítása
-  const headToHeadStats = calculateHeadToHeadStats(historicalData, currentRoundData);
-
-  // Mintázat gyakoriságok kiszámítása
-  const patternFrequencies = calculatePatternFrequencies(historicalData);
-
-  // Predikciók generálása - csak a "mindkét csapat betalál" predikciók
-  const predictions = generatePredictions(historicalData, currentRoundData, teamStats, headToHeadStats);
-
-  return {
-    historicalData,
-    currentRoundData,
-    teamStats,
-    headToHeadStats,
-    patternFrequencies,
-    predictions,
-  };
-};
+// Re-export statistics and predictions functions
+export { calculateTeamStats, calculateHeadToHeadStats, calculatePatternFrequencies } from './vsports/statistics';
+export { generatePredictions } from './vsports/predictions';
