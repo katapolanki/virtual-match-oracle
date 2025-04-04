@@ -16,3 +16,6 @@ export { parseCSV, parseCurrentRoundCSV } from './vsports/parsers';
 // Re-export statistics and predictions functions
 export { calculateTeamStats, calculateHeadToHeadStats, calculatePatternFrequencies } from './vsports/statistics';
 export { generatePredictions } from './vsports/predictions';
+
+// Re-export data fetching function
+export { fetchData } from './vsports/fetch';
