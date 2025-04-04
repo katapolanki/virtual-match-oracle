@@ -1,4 +1,3 @@
-
 // CSV fájlok URL-jei
 const historicalDataUrl =
   "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/cleaned_matches_supabase_data-dglwJkgzIfbtkMAXo8WoEQMo8Rf7D4.csv"
@@ -246,6 +245,19 @@ export const calculateHeadToHeadStats = (
   return Array.from(h2hMap.values());
 };
 
+// Mindkét csapat betalál valószínűség kiszámítása
+const calculateBothTeamsToScoreProb = (matches: HistoricalMatch[]): number => {
+  if (matches.length === 0) {
+    return 0.0;
+  }
+  
+  const bothScoredCount = matches.filter(match => 
+    match.home_score > 0 && match.away_score > 0
+  ).length;
+  
+  return (bothScoredCount / matches.length) * 100;
+};
+
 // Mintázat gyakoriságok kiszámítása
 export const calculatePatternFrequencies = (historicalData: HistoricalMatch[]): PatternFrequency[] => {
   const patternCounts = new Map<string, number>();
@@ -297,7 +309,7 @@ export const calculatePatternFrequencies = (historicalData: HistoricalMatch[]): 
   return frequencies.sort((a, b) => b.percentage - a.percentage);
 };
 
-// Predikciók generálása
+// Predikciók generálása - mostantól csak a "mindkét csapat betalál" predikciókra fókuszálva
 export const generatePredictions = (
   historicalData: HistoricalMatch[], 
   currentRoundData: CurrentMatch[], 
@@ -308,162 +320,91 @@ export const generatePredictions = (
 
   currentRoundData.forEach((match, index) => {
     // Egymás elleni statisztikák keresése
-    const h2h = headToHeadStats.find((h) => h.homeTeam === match.hazaiCsapat && h.awayTeam === match.vendégCsapat);
-
+    const h2h = headToHeadStats.find(
+      h => h.homeTeam === match.hazaiCsapat && h.awayTeam === match.vendégCsapat
+    );
+    
     // Hazai csapat statisztikák
-    const homeTeamStats = teamStats.find((t) => t.team === match.hazaiCsapat);
-
+    const homeTeamStats = teamStats.find(t => t.team === match.hazaiCsapat);
+    
     // Vendég csapat statisztikák
-    const awayTeamStats = teamStats.find((t) => t.team === match.vendégCsapat);
-
-    // Alapértelmezett értékek, ha nincs adat
-    const homeWinRate = homeTeamStats?.winPercentage || 50;
-    const awayWinRate = awayTeamStats?.winPercentage || 50;
-
-    // Predikciók generálása
-    let prediction = "";
-    let odds = 0;
-    let confidence = 0;
-    let pattern = "";
+    const awayTeamStats = teamStats.find(t => t.team === match.vendégCsapat);
+    
+    // Mindkét csapat betalál valószínűség kiszámítása
+    let bothTeamsScoredProb = 0;
     let explanation = "";
-
-    // 1. Hazai/Vendég győzelem vagy döntetlen
+    
+    // 1. Egymás elleni mérkőzések alapján
     if (h2h && h2h.totalMatches > 0) {
-      const homeWinPercentage = (h2h.homeWins / h2h.totalMatches) * 100;
-      const drawPercentage = (h2h.draws / h2h.totalMatches) * 100;
-      const awayWinPercentage = (h2h.awayWins / h2h.totalMatches) * 100;
-
-      if (homeWinPercentage > 60) {
-        prediction = "Hazai győzelem";
-        odds = 1.8;
-        confidence = Math.min(homeWinPercentage, 90);
-        pattern = "1. minta (Papírforma)";
-        explanation = `A ${match.hazaiCsapat} az egymás elleni mérkőzések ${homeWinPercentage.toFixed(1)}%-át nyerte meg a ${match.vendégCsapat} ellen.`;
-      } else if (awayWinPercentage > 60) {
-        prediction = "Vendég győzelem";
-        odds = 2.5;
-        confidence = Math.min(awayWinPercentage, 90);
-        pattern = "2. minta (Fordított)";
-        explanation = `A ${match.vendégCsapat} az egymás elleni mérkőzések ${awayWinPercentage.toFixed(1)}%-át nyerte meg a ${match.hazaiCsapat} ellen.`;
-      } else if (drawPercentage > 30) {
-        prediction = "Döntetlen";
-        odds = 3.2;
-        confidence = Math.min(drawPercentage + 40, 90);
-        pattern = "2. minta (Fordított)";
-        explanation = `A ${match.hazaiCsapat} és a ${match.vendégCsapat} közötti mérkőzések ${drawPercentage.toFixed(1)}%-a végződött döntetlennel.`;
-      }
+      const bothTeamsScoredCount = historicalData.filter(
+        m => (m.home_team === match.hazaiCsapat && m.away_team === match.vendégCsapat) || 
+             (m.home_team === match.vendégCsapat && m.away_team === match.hazaiCsapat)
+      ).filter(m => m.home_score > 0 && m.away_score > 0).length;
+      
+      const h2hBothTeamsScoredPercentage = (bothTeamsScoredCount / Math.max(h2h.totalMatches, 1)) * 100;
+      bothTeamsScoredProb += h2hBothTeamsScoredPercentage * 0.6; // 60% súly az egymás elleni mérkőzéseknek
+      
+      explanation = `A ${match.hazaiCsapat} és a ${match.vendégCsapat} közötti mérkőzések ${h2hBothTeamsScoredPercentage.toFixed(1)}%-ában mindkét csapat betalált.`;
     }
-
-    // 2. Gólok száma
-    if (!prediction || Math.random() > 0.7) {
-      if (h2h) {
-        const avgGoalsPerMatch = (h2h.homeGoals + h2h.awayGoals) / Math.max(h2h.totalMatches, 1);
-
-        if (avgGoalsPerMatch > 2.5) {
-          prediction = "Több mint 2.5 gól";
-          odds = 1.9;
-          confidence = Math.min(70 + (avgGoalsPerMatch - 2.5) * 10, 90);
-          pattern = "1. minta (Papírforma)";
-          explanation = `A ${match.hazaiCsapat} és a ${match.vendégCsapat} közötti mérkőzéseken átlagosan ${avgGoalsPerMatch.toFixed(1)} gól születik.`;
-        } else {
-          prediction = "Kevesebb mint 2.5 gól";
-          odds = 1.9;
-          confidence = Math.min(70 + (2.5 - avgGoalsPerMatch) * 10, 90);
-          pattern = "1. minta (Papírforma)";
-          explanation = `A ${match.hazaiCsapat} és a ${match.vendégCsapat} közötti mérkőzéseken átlagosan csak ${avgGoalsPerMatch.toFixed(1)} gól születik.`;
-        }
-      }
+    
+    // 2. Csapatok általános gólszerzési képessége alapján
+    const homeTeamScoringRate = homeTeamStats ? 
+      homeTeamStats.goalsFor / Math.max(homeTeamStats.matches, 1) : 1.5;
+    const awayTeamScoringRate = awayTeamStats ? 
+      awayTeamStats.goalsFor / Math.max(awayTeamStats.matches, 1) : 1.0;
+    
+    // Ha mindkét csapat átlagosan legalább 1 gólt szerez meccsenként, az növeli a valószínűséget
+    if (homeTeamScoringRate >= 1.0 && awayTeamScoringRate >= 0.8) {
+      bothTeamsScoredProb += 20; // Növeljük a valószínűséget
+      explanation += ` A ${match.hazaiCsapat} átlagosan ${homeTeamScoringRate.toFixed(1)} gólt szerez, a ${match.vendégCsapat} pedig ${awayTeamScoringRate.toFixed(1)} gólt meccsenként.`;
     }
-
-    // 3. Mindkét csapat betalál
-    if (!prediction || Math.random() > 0.7) {
-      if (h2h) {
-        const bothTeamsScoredCount = historicalData
-          .filter(
-            (m) =>
-              (m.home_team === match.hazaiCsapat && m.away_team === match.vendégCsapat) ||
-              (m.home_team === match.vendégCsapat && m.away_team === match.hazaiCsapat),
-          )
-          .filter((m) => m.home_score > 0 && m.away_score > 0).length;
-
-        const bothTeamsScoredPercentage = (bothTeamsScoredCount / Math.max(h2h.totalMatches, 1)) * 100;
-
-        if (bothTeamsScoredPercentage > 60) {
-          prediction = "Mindkét csapat betalál";
-          odds = 1.8;
-          confidence = Math.min(bothTeamsScoredPercentage, 90);
-          pattern = "1. minta (Papírforma)";
-          explanation = `A ${match.hazaiCsapat} és a ${match.vendégCsapat} közötti mérkőzések ${bothTeamsScoredPercentage.toFixed(1)}%-ában mindkét csapat betalált.`;
-        } else {
-          prediction = "Nem talál be mindkét csapat";
-          odds = 2.0;
-          confidence = Math.min(100 - bothTeamsScoredPercentage, 90);
-          pattern = "1. minta (Papírforma)";
-          explanation = `A ${match.hazaiCsapat} és a ${match.vendégCsapat} közötti mérkőzések csak ${bothTeamsScoredPercentage.toFixed(1)}%-ában talált be mindkét csapat.`;
-        }
-      }
+    
+    // 3. Csapatok védekezési képessége alapján
+    const homeTeamConcedingRate = homeTeamStats ? 
+      homeTeamStats.goalsAgainst / Math.max(homeTeamStats.matches, 1) : 1.0;
+    const awayTeamConcedingRate = awayTeamStats ? 
+      awayTeamStats.goalsAgainst / Math.max(awayTeamStats.matches, 1) : 1.5;
+    
+    // Ha mindkét csapat átlagosan legalább 1 gólt kap meccsenként, az növeli a valószínűséget
+    if (homeTeamConcedingRate >= 0.8 && awayTeamConcedingRate >= 1.0) {
+      bothTeamsScoredProb += 20; // Növeljük a valószínűséget
+      explanation += ` A ${match.hazaiCsapat} átlagosan ${homeTeamConcedingRate.toFixed(1)} gólt kap, a ${match.vendégCsapat} pedig ${awayTeamConcedingRate.toFixed(1)} gólt meccsenként.`;
     }
-
-    // 4. Félidő/Végeredmény
-    if (index === 2 || index === 5) {
-      // Minden fordulóban van 1-2 félidő/végeredmény fordítás
-      prediction = "Félidő/Végeredmény fordítás";
-      odds = 4.5;
-      confidence = 75;
-      pattern = "3. minta (Félidő/Végeredmény)";
-      explanation =
-        "A statisztikák alapján minden fordulóban van 1-2 olyan mérkőzés, ahol a félidei eredmény nem egyezik a végeredménnyel.";
+    
+    // Normalizáljuk a valószínűséget 0-100 közé
+    bothTeamsScoredProb = Math.min(Math.max(bothTeamsScoredProb, 0), 100);
+    
+    // Finomítsuk a valószínűséget
+    const relevantMatches = historicalData.filter(m => 
+      m.home_team === match.hazaiCsapat || m.away_team === match.hazaiCsapat ||
+      m.home_team === match.vendégCsapat || m.away_team === match.vendégCsapat
+    );
+    
+    const bttsProb = calculateBothTeamsToScoreProb(relevantMatches);
+    bothTeamsScoredProb = (bothTeamsScoredProb * 0.7) + (bttsProb * 0.3); // Súlyozott átlag
+    
+    // Odds kiszámítása a valószínűség alapján (inverz kapcsolat)
+    // Minél nagyobb a valószínűség, annál kisebb az odds
+    let odds = 0;
+    if (bothTeamsScoredProb > 0) {
+      odds = 100 / bothTeamsScoredProb;
+      odds = Math.max(Math.min(odds, 5), 1.3); // Korlátozzuk 1.3 és 5 közé
+    } else {
+      odds = 3.0; // Alapértelmezett odds, ha nincs elég adat
     }
-
-    // 5. Vendég csapat gólszám 0.5 felett (nagy csapat vs kis csapat esetén)
-    if (homeWinRate > 65 && awayWinRate < 40 && Math.random() > 0.5) {
-      prediction = "Vendég csapat gólszám 0.5 - több";
-      odds = 1.8;
-      confidence = 75;
-      pattern = "2. minta (Fordított)";
-      explanation = `Bár a ${match.hazaiCsapat} az esélyesebb, a ${match.vendégCsapat} nagy valószínűséggel szerez legalább egy gólt.`;
-    }
-
-    // Ha még mindig nincs predikció, akkor alapértelmezett
-    if (!prediction) {
-      if (homeWinRate > awayWinRate + 10) {
-        prediction = "Hazai győzelem";
-        odds = 1.8;
-        confidence = Math.min(homeWinRate, 90);
-        pattern = "1. minta (Papírforma)";
-        explanation = `A ${match.hazaiCsapat} általános győzelmi aránya ${homeWinRate.toFixed(1)}%, ami magasabb, mint a ${match.vendégCsapat} ${awayWinRate.toFixed(1)}%-os aránya.`;
-      } else if (awayWinRate > homeWinRate + 10) {
-        prediction = "Vendég győzelem";
-        odds = 2.5;
-        confidence = Math.min(awayWinRate, 90);
-        pattern = "2. minta (Fordított)";
-        explanation = `A ${match.vendégCsapat} általános győzelmi aránya ${awayWinRate.toFixed(1)}%, ami magasabb, mint a ${match.hazaiCsapat} ${homeWinRate.toFixed(1)}%-os aránya.`;
-      } else {
-        prediction = "Döntetlen";
-        odds = 3.2;
-        confidence = 60;
-        pattern = "4. minta (Kiszámíthatatlan)";
-        explanation = `A ${match.hazaiCsapat} és a ${match.vendégCsapat} hasonló erősségűek, a döntetlen valószínű.`;
-      }
-    }
-
-    // Csak 1.6x vagy magasabb oddsú fogadásokat ajánlunk
-    if (odds < 1.6) {
-      odds = 1.6 + Math.random() * 0.5;
-    }
-
+    
     predictions.push({
       id: index + 1,
       homeTeam: match.hazaiCsapat,
       awayTeam: match.vendégCsapat,
-      prediction,
+      prediction: "Mindkét csapat betalál",
       odds: Number.parseFloat(odds.toFixed(2)),
-      confidence: Number.parseFloat(confidence.toFixed(0)),
-      pattern,
-      explanation,
+      confidence: Number.parseFloat(bothTeamsScoredProb.toFixed(0)),
+      pattern: "3. minta (Mindkét csapat betalál)",
+      explanation
     });
   });
-
+  
   // Rendezés megbízhatóság szerint
   return predictions.sort((a, b) => b.confidence - a.confidence);
 };
@@ -496,7 +437,7 @@ export const fetchData = async (): Promise<{
   // Mintázat gyakoriságok kiszámítása
   const patternFrequencies = calculatePatternFrequencies(historicalData);
 
-  // Predikciók generálása
+  // Predikciók generálása - csak a "mindkét csapat betalál" predikciók
   const predictions = generatePredictions(historicalData, currentRoundData, teamStats, headToHeadStats);
 
   return {
